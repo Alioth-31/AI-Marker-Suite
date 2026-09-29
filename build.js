@@ -116,6 +116,8 @@ const BUILD_CONFIGS = [
             'adapters/c30/adapter.js',
             'adapters/ameqp/selectors.js',
             'adapters/ameqp/adapter.js',
+            'adapters/haoyuejuan/selectors.js',
+            'adapters/haoyuejuan/adapter.js',
         ],
         header: {
             name: 'AI-Marker-Suite',
