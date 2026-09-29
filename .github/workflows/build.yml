@@ -27,7 +27,7 @@ jobs:
       - name: Verify version bumped before stable deploy
         run: |
           CONFIG_VERSION=$(node -e "const s=require('fs').readFileSync('src/core/config.js','utf8'); console.log(s.match(/VERSION\s*:\s*'([^']+)'/)[1])")
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          LATEST_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo "")
           if [ -z "$LATEST_TAG" ]; then
             echo "仓库尚无 tag，跳过检查"
             exit 0
