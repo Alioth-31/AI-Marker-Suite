@@ -2,7 +2,7 @@
 
 > **晚上挂机睡觉，早上起来全改完。**
 
-[![版本](https://img.shields.io/badge/version-1.21.11.3-blue.svg)](https://github.com/five-plus-one/AI-Marker-Suite)
+[![版本](https://img.shields.io/badge/version-1.21.12.0-blue.svg)](https://github.com/five-plus-one/AI-Marker-Suite)
 [![许可证](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 
 ---
@@ -167,19 +167,15 @@
 
 > 完整更新日志见 [更新日志页面](https://aimarking.five-plus-one.com/changelog)
 
-### v1.21.11.3 (2026-09-24)
-**修复**
-- 修复AMEQP答题卡取图裁切到题块可视区域，不再发送整张答题卡
-- 修复AMEQP填分后同步平台隐藏字段并延迟提交，避免"没给分"误跳下一份
-- 修复AMEQP任务标识改用题号，修复绑定试题后仍重复弹出引导界面的问题
-
-### v1.21.11.2 (2026-09-22)
+### v1.21.12 (2026-09-24)
 **新平台**
 - 新增AMEQP网上评卷平台适配，支持内网裸IP部署、题块裁剪图取完整图、多评分单元和jQuery+EasyUI组件交互
 
-### v1.21.11.1 (2026-09-15)
 **修复**
 - 修复乐华阅卷满分按钮无法命中导致不自动跳下一张的问题：分数匹配改为数值解析，并兼容带「满」标记的按钮
+- 修复AMEQP答题卡取图裁切到题块可视区域，不再发送整张答题卡
+- 修复AMEQP填分后同步平台隐藏字段并延迟提交，避免"没给分"误跳下一份
+- 修复AMEQP任务标识改用题号，修复绑定试题后仍重复弹出引导界面的问题
 
 ### v1.21.11 (2026-09-08)
 **新平台**
