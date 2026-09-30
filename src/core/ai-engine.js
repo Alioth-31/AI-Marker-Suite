@@ -378,7 +378,7 @@ const WorkflowManager = {
 WorkflowManager.init();
 
 // ========== 通用 AI 请求函数 ==========
-function callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages, maxTokens) {
+function callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
     return new Promise((resolve, reject) => {
         const messageContent = [{ type: "text", text: prompt }];
         // 合并额外图片（来自题目/答案/评分标准）+ 学生答题卡图片
@@ -390,7 +390,6 @@ function callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages
         const requestBody = {
             model: config.model,
             messages: [{ role: "user", content: messageContent }],
-            max_tokens: maxTokens,
             stream: true
         };
 
@@ -523,7 +522,7 @@ function callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages
                 console.log('[AI响应]', { finishReason, usage, reasoningChars, contentChars: fullText.length });
                 if (streamError) return reject(new Error(`API响应错误: ${streamError}`));
                 if (finishReason === 'length') {
-                    const error = new Error(`AI输出达到 ${maxTokens} token 上限，结果不完整`);
+                    const error = new Error('AI回答达到接口输出上限，结果不完整；请检查模型设置后继续批改');
                     error.code = 'OUTPUT_TRUNCATED';
                     return reject(error);
                 }
@@ -557,25 +556,17 @@ function callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages
 }
 
 // ========== 带重试的 AI 请求包装 ==========
-// 每个模型调用最多三次。截断可提高输出额度；仅明确的限流/服务端错误可重试。
+// 使用接口自身的输出额度。仅明确的限流/服务端错误可在预算内重试。
 async function callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
     const budget = config.requestBudget || { remaining: 3 };
-    let maxTokens = 2048;
-    let expanded = false;
     let serverRetried = false;
     for (let attempt = 0; attempt < 3; attempt++) {
         if (window.aiGradingState.abortController?.signal.aborted) throw new Error('用户主动暂停');
         if (budget.remaining <= 0) throw new Error('AI请求次数已达到上限');
         budget.remaining--;
         try {
-            return await callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages, maxTokens);
+            return await callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages);
         } catch (error) {
-            if (error.code === 'OUTPUT_TRUNCATED' && !expanded && attempt < 2) {
-                expanded = true;
-                maxTokens = 8192;
-                if (onStreamUpdate) onStreamUpdate('输出较长，正在继续分析…');
-                continue;
-            }
             if ((error.status === 429 || error.status >= 500) && !serverRetried && attempt < 2) {
                 serverRetried = true;
                 await new Promise(resolve => setTimeout(resolve, error.status === 429 ? 5000 : 2000));
