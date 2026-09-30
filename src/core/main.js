@@ -277,15 +277,7 @@ async function startAutoGrading() {
                 blankRatios: blankRatiosData
             });
         } else {
-            // 分数解析失败（"未能识别"），自动重试
-            window.aiGradingState.errorRetryCount++;
-            if (window.aiGradingState.errorRetryCount <= window.aiGradingState.maxRetries && !window.aiGradingState.isPaused) {
-                console.warn(`⚠️ AI未能识别分数，第 ${window.aiGradingState.errorRetryCount} 次重试...`);
-                safeAlert(`⚠️ AI未能识别分数，正在重试 (${window.aiGradingState.errorRetryCount}/${window.aiGradingState.maxRetries})...`);
-                setTimeout(() => startAutoGrading(), 1500);
-                return;
-            }
-            throw new Error('AI返回异常: ' + JSON.stringify(result));
+            throw new Error('AI未返回可识别的分数，请检查模型回答后继续批改');
         }
 
     } catch (error) {
@@ -296,21 +288,7 @@ async function startAutoGrading() {
         }
 
         console.error('❌ 打分失败:', error);
-        window.aiGradingState.errorRetryCount++;
-        const retryCount = window.aiGradingState.errorRetryCount;
-        const maxRetries = window.aiGradingState.maxRetries;
-
-        if (retryCount <= maxRetries) {
-            // 瞬时错误：直接 setTimeout 重试（不刷新页面）
-            const delay = retryCount <= 2 ? 2000 : 5000; // 前2次2秒，之后5秒
-            console.warn(`⚠️ 打分失败(第${retryCount}/${maxRetries}次): ${error.message}，${delay / 1000}秒后重试...`);
-            showToast(`⚠️ 第${retryCount}次重试中... (${error.message.slice(0, 30)})`);
-            setTimeout(() => startAutoGrading(), delay);
-            return;
-        }
-
-        // 超过重试次数：暂停（不停止），让用户决定
-        console.error(`❌ 连续失败${maxRetries}次，已暂停批改`);
+        console.error('❌ 批改失败，已暂停:', error);
         window.aiGradingState.isRunning = false;
         window.aiGradingState.isPaused = true;
         const btn = document.querySelector('.ai-grade-btn');
@@ -319,7 +297,7 @@ async function startAutoGrading() {
             btn.classList.remove('running', 'unattended', 'trial');
             btn.classList.add('paused');
         }
-        showToast(`❌ 连续失败${maxRetries}次，已暂停。点击"继续批改"可重试`);
+        showToast(`批改已暂停：${error.message}。检查后可继续批改`);
     }
 }
 
