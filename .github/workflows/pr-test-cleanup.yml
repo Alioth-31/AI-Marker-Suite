@@ -2,8 +2,7 @@ name: Retire PR Temporary Build
 
 on:
   pull_request_target:
-    branches: [dev]
-    types: [closed]
+    types: [closed, edited]
 
 permissions:
   contents: read
@@ -11,6 +10,7 @@ permissions:
 
 jobs:
   retire:
+    if: ${{ (github.event.action == 'closed' && github.event.pull_request.base.ref == 'dev') || (github.event.action == 'edited' && github.event.changes.base != null && github.event.pull_request.base.ref != 'dev') }}
     runs-on: ubuntu-latest
     steps:
       - name: Remove temporary script

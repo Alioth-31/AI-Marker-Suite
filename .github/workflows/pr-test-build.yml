@@ -3,7 +3,7 @@ name: PR Temporary Build
 on:
   pull_request:
     branches: [dev]
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
