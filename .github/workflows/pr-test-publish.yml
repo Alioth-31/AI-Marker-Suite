@@ -20,16 +20,18 @@ jobs:
           name: pr-temporary-script
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: artifact
+          path: ${{ runner.temp }}/pr-artifact
       - name: Validate PR and script
         id: validate
         uses: actions/github-script@v7
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/pr-artifact
         with:
           script: |
             const fs = require('fs');
             const path = require('path');
             const run = context.payload.workflow_run;
-            const identity = JSON.parse(fs.readFileSync('artifact/pr-identity.json', 'utf8'));
+            const identity = JSON.parse(fs.readFileSync(path.join(process.env.ARTIFACT_DIR, 'pr-identity.json'), 'utf8'));
             const prNumber = identity.pr;
             if (!Number.isSafeInteger(prNumber) || prNumber < 1 || !/^[a-f0-9]{40}$/.test(identity.sha)) throw new Error('Invalid PR identity');
             const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: prNumber });
@@ -37,7 +39,7 @@ jobs:
               throw new Error('PR changed or is not eligible');
             }
             if (![pr.head.sha, pr.merge_commit_sha].includes(run.head_sha)) throw new Error('Build revision differs from PR');
-            const script = path.resolve('artifact/dist/ai_marker.user.js');
+            const script = path.join(process.env.ARTIFACT_DIR, 'dist/ai_marker.user.js');
             const stat = fs.lstatSync(script);
             if (!stat.isFile() || stat.size < 1000 || stat.size > 5000000) throw new Error('Invalid script artifact');
             const header = fs.readFileSync(script, 'utf8').slice(0, 4000);
@@ -55,6 +57,7 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
           SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+          ARTIFACT_DIR: ${{ runner.temp }}/pr-artifact
         run: |
           set -euo pipefail
           test "$PR_NUMBER" -gt 0
@@ -63,7 +66,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           remote="$SSH_USERNAME@$SSH_HOST"
-          scp -i ~/.ssh/deploy_key -P "$SSH_PORT" artifact/dist/ai_marker.user.js "$remote:/tmp/aimarker-pr-$PR_NUMBER-$RUN_ID.user.js"
+          scp -i ~/.ssh/deploy_key -P "$SSH_PORT" "$ARTIFACT_DIR/dist/ai_marker.user.js" "$remote:/tmp/aimarker-pr-$PR_NUMBER-$RUN_ID.user.js"
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$remote" "set -eu; target=/opt/1panel/www/sites/aimarker-suite-ota/index/ota/dev/prtest; sudo mkdir -p \"\$target\"; owner=\$(stat -c '%U:%G' /opt/1panel/www/sites/aimarker-suite-ota/index/ota/dev); sudo install -m 644 -o \"\${owner%%:*}\" -g \"\${owner#*:}\" /tmp/aimarker-pr-$PR_NUMBER-$RUN_ID.user.js \"\$target/$PR_NUMBER.user.js\"; rm -f /tmp/aimarker-pr-$PR_NUMBER-$RUN_ID.user.js"
       - name: Comment installation link
         uses: actions/github-script@v7
