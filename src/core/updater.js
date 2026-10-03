@@ -42,6 +42,7 @@ function getBuildChannel() {
  */
 function getBuildChannelLabel() {
     const channel = getBuildChannel();
+    if (channel === 'prtest') return '临时测试版';
     const channels = SCRIPT_CONFIG.CHANNELS || {};
     return (channels[channel] || channels.stable || {}).label || '稳定版';
 }
@@ -544,6 +545,10 @@ function fallbackCheckFullScript(force, btn, restoreBtn, now) {
  * - 无人值守模式下完全跳过
  */
 function checkForUpdate(force = false, btn) {
+    if (getBuildChannel() === 'prtest') {
+        if (force) showToast('临时测试版请通过 PR 中的安装链接获取最新版本');
+        return;
+    }
     // 无人值守模式：自动检查跳过，手动检查（force）仍然执行
     if (!force && window.aiGradingState && window.aiGradingState.gradingMode === 'unattended') return;
 

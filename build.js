@@ -5,7 +5,7 @@
  * 版本号唯一来源：src/core/config.js 中的 SCRIPT_CONFIG.VERSION
  * 修改版本时只需编辑 src/core/config.js，此处会自动提取。
  *
- * 用法: node build.js [--channel=stable|preview|dev] [--build=N]
+ * 用法: node build.js [--channel=stable|preview|dev|prtest] [--build=N] [--pr=N]
  */
 
 const fs = require('fs');
@@ -22,6 +22,11 @@ function getArg(name) {
 }
 const CHANNEL = getArg('channel') || 'stable';   // stable | preview | dev
 const BUILD_NUM = getArg('build');                // 可选，不传则 dev 自动用 commit count
+const PR_NUMBER = getArg('pr');
+if (!['stable', 'preview', 'dev', 'prtest'].includes(CHANNEL)) throw new Error('未知构建渠道');
+if (CHANNEL === 'prtest' && (!/^[1-9]\d*$/.test(PR_NUMBER || '') || !/^[1-9]\d*$/.test(BUILD_NUM || ''))) {
+    throw new Error('临时测试版需要有效的 PR 编号和构建号');
+}
 
 // ========== 配置 ==========
 const SRC_DIR = path.join(__dirname, 'src');
@@ -118,11 +123,13 @@ const BUILD_CONFIGS = [
             'adapters/ameqp/adapter.js',
             'adapters/haoyuejuan/selectors.js',
             'adapters/haoyuejuan/adapter.js',
+            'adapters/haiyun/selectors.js',
+            'adapters/haiyun/adapter.js',
         ],
         header: {
             name: 'AI-Marker-Suite',
             namespace: 'https://aimarking.five-plus-one.com/',
-            description: 'AI自动批改助手，支持智学网、七天网络、好分数、五岳阅卷、阅小二、华翰云、光大阅卷、云阅卷、新教育、鑫考、润建、54学霸、九科星、慧阅卷、乐华阅卷、慧学星、粤教翔云、云阅卷(好分数)、科耘、威科姆、C30、AMEQP等平台。自动识别答案、智能评分、自动提交！',
+            description: 'AI自动批改助手，支持智学网、七天网络、好分数、五岳阅卷、阅小二、华翰云、光大阅卷、云阅卷、新教育、鑫考、润建、54学霸、九科星、慧阅卷、乐华阅卷、慧学星、粤教翔云、云阅卷(好分数)、科耘、威科姆、C30、AMEQP、海云智评等平台。自动识别答案、智能评分、自动提交！',
             author: '5plus1',
             match: [
                 'https://www.zhixue.com/*',
@@ -155,6 +162,7 @@ const BUILD_CONFIGS = [
                 '*://wyna.onlyets.com/*',
                 '*://zy.iclass30.com/*',
                 '*://*/AMEQP/Webroot/mar/*',
+                '*://zp.kaow.cn/*',
             ],
             include: [
                 '/^https?:\/\/\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+\\//',  // IP:端口 部署（光大阅卷等）
@@ -207,6 +215,7 @@ function extractVersion() {
  * - dev:     原始版本-dev.N（如 1.21.5.115-dev.47），N 默认为 git commit count
  */
 function computeVersion(baseVersion) {
+    if (CHANNEL === 'prtest') return `0.0.${PR_NUMBER}-prtest.${BUILD_NUM}`;
     if (CHANNEL === 'stable') return baseVersion;
 
     let buildNum = BUILD_NUM;
@@ -227,6 +236,10 @@ function computeVersion(baseVersion) {
 
 // ========== 渠道 URL 配置 ==========
 const CHANNEL_URLS = {
+    prtest: {
+        manifestUrl: `https://auto-update.aimarking.five-plus-one.com/ota/dev/prtest/${PR_NUMBER}.manifest.json`,
+        scriptUrl: `https://auto-update.aimarking.five-plus-one.com/ota/dev/prtest/${PR_NUMBER}.user.js`,
+    },
     stable: {
         manifestUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/manifest.json',
         scriptUrl: 'https://auto-update.aimarking.five-plus-one.com/ota/ai_marker.user.js',
@@ -349,13 +362,13 @@ function generateHeader(config, version) {
     const h = config.header;
     const channelUrl = CHANNEL_URLS[CHANNEL] || CHANNEL_URLS.stable;
     const lines = ['// ==UserScript=='];
-    lines.push(`// @name         ${h.name}`);
-    lines.push(`// @namespace    ${h.namespace || 'https://aimarking.five-plus-one.com/'}`);
+    lines.push(`// @name         ${h.name}${CHANNEL === 'prtest' ? ` (PR #${PR_NUMBER} 临时测试版)` : ''}`);
+    lines.push(`// @namespace    ${CHANNEL === 'prtest' ? `https://aimarking.five-plus-one.com/prtest/${PR_NUMBER}` : (h.namespace || 'https://aimarking.five-plus-one.com/')}`);
     lines.push(`// @version      ${version}`);
     lines.push(`// @description  ${h.description}`);
     lines.push(`// @author       ${h.author || '5plus1'}`);
     lines.push(`// @downloadURL  ${channelUrl.scriptUrl}`);
-    lines.push(`// @updateURL    ${channelUrl.manifestUrl.replace('manifest.json', 'ai_marker.user.js')}`);
+    lines.push(`// @updateURL    ${CHANNEL === 'prtest' ? channelUrl.scriptUrl : channelUrl.manifestUrl.replace('manifest.json', 'ai_marker.user.js')}`);
     for (const m of h.match) lines.push(`// @match        ${m}`);
     if (h.include) {
         for (const i of h.include) lines.push(`// @include      ${i}`);

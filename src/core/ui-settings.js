@@ -2299,13 +2299,14 @@ function renderWorkflowInfo() {
 
     if (infoEl && wf) {
         const modelInfo = wf.model;
-        const reasoningLabel = { minimal: '不思考', low: '轻度', medium: '中度', high: '深度' };
-        let html = `<div style="margin-bottom:4px;"><strong>主模型：</strong>${modelInfo.provider} / ${modelInfo.model}${modelInfo.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + (reasoningLabel[modelInfo.reasoningEffort] || modelInfo.reasoningEffort) + ')</span>' : ''}</div>`;
+        const reasoningLabel = { minimal: '最低', low: '轻度', medium: '中度', high: '深度' };
+        const safe = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+        let html = `<div style="margin-bottom:4px;"><strong>主模型：</strong>${safe(modelInfo.provider)} / ${safe(modelInfo.model)}${modelInfo.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + safe(reasoningLabel[modelInfo.reasoningEffort] || modelInfo.reasoningEffort) + ')</span>' : ''}</div>`;
         if (wf.dualEval && wf.dualEval.enabled) {
             const sec = wf.dualEval.secondary;
             const arb = wf.dualEval.arbitration;
-            html += `<div style="margin-bottom:4px;"><strong>副模型：</strong>${sec.provider} / ${sec.model}${sec.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + (reasoningLabel[sec.reasoningEffort] || sec.reasoningEffort) + ')</span>' : ''}</div>`;
-            html += `<div style="margin-bottom:4px;"><strong>仲裁模型：</strong>${arb.provider} / ${arb.model}${arb.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + (reasoningLabel[arb.reasoningEffort] || arb.reasoningEffort) + ')</span>' : ''}</div>`;
+            html += `<div style="margin-bottom:4px;"><strong>副模型：</strong>${safe(sec.provider)} / ${safe(sec.model)}${sec.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + safe(reasoningLabel[sec.reasoningEffort] || sec.reasoningEffort) + ')</span>' : ''}</div>`;
+            html += `<div style="margin-bottom:4px;"><strong>仲裁模型：</strong>${safe(arb.provider)} / ${safe(arb.model)}${arb.reasoningEffort ? ' <span style="font-size:11px;color:#86868b;">(' + safe(reasoningLabel[arb.reasoningEffort] || arb.reasoningEffort) + ')</span>' : ''}</div>`;
             html += `<div><strong>分差阈值：</strong>${wf.dualEval.threshold}分</div>`;
         }
         infoEl.innerHTML = html;
@@ -2390,13 +2391,9 @@ function showWorkflowEditModal(wf) {
 
     const isDual = wf.dualEval && wf.dualEval.enabled;
 
-    const reasoningEffortOptions = `
-        <option value="">不设置</option>
-        <option value="minimal">minimal (不思考)</option>
-        <option value="low">low (轻度)</option>
-        <option value="medium">medium (中度)</option>
-        <option value="high">high (深度)</option>
-    `;
+    const reasoningEffortOptions = `<datalist id="wf-reasoning-options">
+        <option value="minimal"><option value="low"><option value="medium"><option value="high">
+    </datalist>`;
 
     const modal = document.createElement('div');
     modal.className = 'ai-modal-overlay';
@@ -2404,13 +2401,16 @@ function showWorkflowEditModal(wf) {
         <div class="ai-modal-card" style="max-width:500px;max-height:85vh;display:flex;flex-direction:column;">
             <div class="ai-modal-header">编辑工作流</div>
             <div class="ai-modal-body" style="overflow-y:auto;flex:1;min-height:0;">
+                ${reasoningEffortOptions}
                 <div class="form-group"><label>名称</label><input type="text" id="wf-edit-name" value="${wf.name}" ${wf.isBuiltin ? 'readonly' : ''}></div>
                 <div class="form-group"><label>描述</label><input type="text" id="wf-edit-desc" value="${wf.description || ''}"></div>
+                <div class="checkbox-group"><input type="checkbox" id="wf-edit-output-limit" ${wf.outputLimitEnabled !== false ? 'checked' : ''}><label for="wf-edit-output-limit">限制单次回答长度</label></div>
+                <div class="form-group" id="wf-output-limit-value"><label>回答长度上限 <span style="font-size:11px;color:#86868b;">(超出时会再尝试一次)</span></label><input type="number" id="wf-edit-max-output" min="1" step="1" value="${wf.maxOutputTokens || 2048}"></div>
                 <div style="border-top:1px solid rgba(0,0,0,0.06);padding-top:12px;margin-top:8px;">
                     <div style="font-size:13px;font-weight:600;margin-bottom:10px;">主模型</div>
                     <div class="form-group"><label>供应商</label><select id="wf-edit-provider">${providerOptions}</select></div>
                     <div class="form-group"><label>模型</label><select id="wf-edit-model"></select></div>
-                    <div class="form-group"><label>思考链深度 <span style="font-size:11px;color:#86868b;">(部分模型不支持)</span></label><select id="wf-edit-reasoning">${reasoningEffortOptions}</select></div>
+                    <div class="form-group"><label>思考参数 <span style="font-size:11px;color:#86868b;">(按接口要求填写，留空则不发送)</span></label><input id="wf-edit-reasoning" list="wf-reasoning-options" placeholder="例如 minimal、low"></div>
                 </div>
                 <div style="border-top:1px solid rgba(0,0,0,0.06);padding-top:12px;margin-top:8px;">
                     <div class="checkbox-group">
@@ -2421,11 +2421,11 @@ function showWorkflowEditModal(wf) {
                         <div style="font-size:13px;font-weight:600;margin:10px 0;">副模型</div>
                         <div class="form-group"><label>供应商</label><select id="wf-edit-sec-provider">${providerOptions}</select></div>
                         <div class="form-group"><label>模型</label><select id="wf-edit-sec-model"></select></div>
-                        <div class="form-group"><label>思考链深度</label><select id="wf-edit-sec-reasoning">${reasoningEffortOptions}</select></div>
+                        <div class="form-group"><label>思考参数</label><input id="wf-edit-sec-reasoning" list="wf-reasoning-options" placeholder="留空则不发送"></div>
                         <div style="font-size:13px;font-weight:600;margin:10px 0;">仲裁模型</div>
                         <div class="form-group"><label>供应商</label><select id="wf-edit-arb-provider">${providerOptions}</select></div>
                         <div class="form-group"><label>模型</label><select id="wf-edit-arb-model"></select></div>
-                        <div class="form-group"><label>思考链深度</label><select id="wf-edit-arb-reasoning">${reasoningEffortOptions}</select></div>
+                        <div class="form-group"><label>思考参数</label><input id="wf-edit-arb-reasoning" list="wf-reasoning-options" placeholder="留空则不发送"></div>
                         <div class="form-group"><label>分差阈值 (分，设为0则两模型必须完全一致)</label><input type="number" id="wf-edit-threshold" value="${wf.dualEval?.threshold != null ? wf.dualEval.threshold : 2}" min="0" max="10"></div>
                     </div>
                 </div>
@@ -2449,6 +2449,11 @@ function showWorkflowEditModal(wf) {
     const arbProvider = document.getElementById('wf-edit-arb-provider');
     const arbModel = document.getElementById('wf-edit-arb-model');
     const arbReasoning = document.getElementById('wf-edit-arb-reasoning');
+    const outputLimitToggle = document.getElementById('wf-edit-output-limit');
+    const maxOutputInput = document.getElementById('wf-edit-max-output');
+    const syncOutputLimit = () => { document.getElementById('wf-output-limit-value').style.display = outputLimitToggle.checked ? '' : 'none'; };
+    outputLimitToggle.onchange = syncOutputLimit;
+    syncOutputLimit();
 
     // 确保 provider 有效，若无效则回退到第一个可用 provider
     const validProviders = Object.keys(ProviderManager.data.providers);
@@ -2508,17 +2513,24 @@ function showWorkflowEditModal(wf) {
     // 保存
     modal.querySelector('#wf-edit-save').onclick = async () => {
         const dualEnabled = document.getElementById('wf-edit-dual').checked;
+        const maxOutputTokens = Number(maxOutputInput.value);
+        if (outputLimitToggle.checked && (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1)) {
+            showToast('请填写有效的回答长度上限');
+            return;
+        }
         const config = {
             description: document.getElementById('wf-edit-desc').value,
+            outputLimitEnabled: outputLimitToggle.checked,
+            maxOutputTokens: outputLimitToggle.checked ? maxOutputTokens : (wf.maxOutputTokens || 2048),
             model: {
                 provider: mainProvider.value,
                 model: mainModel.value,
-                reasoningEffort: mainReasoning.value
+                reasoningEffort: mainReasoning.value.trim()
             },
             dualEval: dualEnabled ? {
                 enabled: true,
-                secondary: { provider: secProvider.value, model: secModel.value, reasoningEffort: secReasoning.value },
-                arbitration: { provider: arbProvider.value, model: arbModel.value, reasoningEffort: arbReasoning.value },
+                secondary: { provider: secProvider.value, model: secModel.value, reasoningEffort: secReasoning.value.trim() },
+                arbitration: { provider: arbProvider.value, model: arbModel.value, reasoningEffort: arbReasoning.value.trim() },
                 threshold: (function () { var v = parseInt(document.getElementById('wf-edit-threshold').value); return isNaN(v) ? 2 : Math.max(0, v); })()
             } : null
         };
