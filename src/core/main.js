@@ -178,12 +178,22 @@ async function startAutoGrading() {
 
         console.log('🤖 [诊断] 开始调用AI接口...');
         // 根据是否启用双评，选择调用方式
-        const gradingConfig = { ...config, workflowId: workflowId };
+        const outputObservation = { upgraded: false };
+        const outputLimitKey = JSON.stringify({
+            preset: PresetManager.data.active,
+            workflowId,
+            model: workflow?.model || config.model,
+            dualEval: workflow?.dualEval || null,
+            endpoint: config.endpoint,
+            outputLimitEnabled: config.outputLimitEnabled !== false,
+            maxOutputTokens: config.maxOutputTokens || 2048
+        });
+        const gradingConfig = { ...config, workflowId, outputObservation, outputLimitKey };
         const result = isDualEval
             ? await callDualEvaluation(base64DataArray, gradingConfig, (streamedText) => {
                 if (window.aiGradingState.gradingMode !== 'unattended') updateStreamPanel(streamedText);
             })
-            : await callAIGrading(base64DataArray, config, (streamedText) => {
+            : await callAIGrading(base64DataArray, gradingConfig, (streamedText) => {
                 if (window.aiGradingState.gradingMode !== 'unattended') updateStreamPanel(streamedText);
             });
 
@@ -192,6 +202,7 @@ async function startAutoGrading() {
 
         console.log(`📊 [诊断] callAIGrading 返回 — score: ${result.score}, comment长度: ${(result.comment || '').length}字`);
         if (result.score !== undefined && result.score !== null) {
+            recordOutputLimitOutcome(gradingConfig);
             const scoringConfig = presetConfig.scoring || { roundStep: 1, roundMethod: 'round' };
             const maxScore = PresetManager.getMaxScore();
 

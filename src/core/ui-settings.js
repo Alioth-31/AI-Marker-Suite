@@ -2404,6 +2404,8 @@ function showWorkflowEditModal(wf) {
                 ${reasoningEffortOptions}
                 <div class="form-group"><label>名称</label><input type="text" id="wf-edit-name" value="${wf.name}" ${wf.isBuiltin ? 'readonly' : ''}></div>
                 <div class="form-group"><label>描述</label><input type="text" id="wf-edit-desc" value="${wf.description || ''}"></div>
+                <div class="checkbox-group"><input type="checkbox" id="wf-edit-output-limit" ${wf.outputLimitEnabled !== false ? 'checked' : ''}><label for="wf-edit-output-limit">限制单次回答长度</label></div>
+                <div class="form-group" id="wf-output-limit-value"><label>回答长度上限 <span style="font-size:11px;color:#86868b;">(超出时会再尝试一次)</span></label><input type="number" id="wf-edit-max-output" min="1" step="1" value="${wf.maxOutputTokens || 2048}"></div>
                 <div style="border-top:1px solid rgba(0,0,0,0.06);padding-top:12px;margin-top:8px;">
                     <div style="font-size:13px;font-weight:600;margin-bottom:10px;">主模型</div>
                     <div class="form-group"><label>供应商</label><select id="wf-edit-provider">${providerOptions}</select></div>
@@ -2447,6 +2449,11 @@ function showWorkflowEditModal(wf) {
     const arbProvider = document.getElementById('wf-edit-arb-provider');
     const arbModel = document.getElementById('wf-edit-arb-model');
     const arbReasoning = document.getElementById('wf-edit-arb-reasoning');
+    const outputLimitToggle = document.getElementById('wf-edit-output-limit');
+    const maxOutputInput = document.getElementById('wf-edit-max-output');
+    const syncOutputLimit = () => { document.getElementById('wf-output-limit-value').style.display = outputLimitToggle.checked ? '' : 'none'; };
+    outputLimitToggle.onchange = syncOutputLimit;
+    syncOutputLimit();
 
     // 确保 provider 有效，若无效则回退到第一个可用 provider
     const validProviders = Object.keys(ProviderManager.data.providers);
@@ -2506,8 +2513,15 @@ function showWorkflowEditModal(wf) {
     // 保存
     modal.querySelector('#wf-edit-save').onclick = async () => {
         const dualEnabled = document.getElementById('wf-edit-dual').checked;
+        const maxOutputTokens = Number(maxOutputInput.value);
+        if (outputLimitToggle.checked && (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1)) {
+            showToast('请填写有效的回答长度上限');
+            return;
+        }
         const config = {
             description: document.getElementById('wf-edit-desc').value,
+            outputLimitEnabled: outputLimitToggle.checked,
+            maxOutputTokens: outputLimitToggle.checked ? maxOutputTokens : (wf.maxOutputTokens || 2048),
             model: {
                 provider: mainProvider.value,
                 model: mainModel.value,

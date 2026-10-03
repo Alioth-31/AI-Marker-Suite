@@ -336,6 +336,10 @@ const WorkflowManager = {
         if (callConfig && wf.model.reasoningEffort) {
             callConfig.reasoningEffort = wf.model.reasoningEffort;
         }
+        if (callConfig) {
+            callConfig.outputLimitEnabled = wf.outputLimitEnabled !== false;
+            callConfig.maxOutputTokens = wf.maxOutputTokens || 2048;
+        }
         return callConfig;
     },
     setActive(id) {
@@ -378,7 +382,7 @@ const WorkflowManager = {
 WorkflowManager.init();
 
 // ========== 通用 AI 请求函数 ==========
-function callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
+function callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages, maxTokens) {
     return new Promise((resolve, reject) => {
         const messageContent = [{ type: "text", text: prompt }];
         // 合并额外图片（来自题目/答案/评分标准）+ 学生答题卡图片
@@ -392,6 +396,7 @@ function callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages
             messages: [{ role: "user", content: messageContent }],
             stream: true
         };
+        if (maxTokens !== null) requestBody.max_tokens = maxTokens;
 
         // 如果配置了思考链深度，添加 reasoning_effort 参数
         if (config.reasoningEffort) {
@@ -522,7 +527,9 @@ function callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages
                 console.log('[AI响应]', { finishReason, usage, reasoningChars, contentChars: fullText.length });
                 if (streamError) return reject(new Error(`API响应错误: ${streamError}`));
                 if (finishReason === 'length') {
-                    const error = new Error('AI回答达到接口输出上限，结果不完整；请检查模型设置后继续批改');
+                    const error = new Error(maxTokens === null
+                        ? 'AI回答达到接口输出上限，结果不完整；请检查模型设置后继续批改'
+                        : 'AI回答达到设定的输出上限，结果不完整');
                     error.code = 'OUTPUT_TRUNCATED';
                     return reject(error);
                 }
@@ -556,17 +563,49 @@ function callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages
 }
 
 // ========== 带重试的 AI 请求包装 ==========
-// 使用接口自身的输出额度。仅明确的限流/服务端错误可在预算内重试。
+function getOutputLimitPolicy(key) {
+    if (!key) return null;
+    const state = window.aiGradingState;
+    if (!state.outputLimitPolicy || state.outputLimitPolicy.key !== key) {
+        state.outputLimitPolicy = { key, recent: [], useProviderDefault: false };
+    }
+    return state.outputLimitPolicy;
+}
+
+function recordOutputLimitOutcome(config) {
+    if (!config.outputLimitKey || config.outputLimitEnabled === false) return;
+    const policy = getOutputLimitPolicy(config.outputLimitKey);
+    policy.recent.push(Boolean(config.outputObservation?.upgraded));
+    if (policy.recent.length > 5) policy.recent.shift();
+    if (policy.recent.length === 5 && policy.recent.filter(Boolean).length >= 3) {
+        policy.useProviderDefault = true;
+    }
+}
+
+// 每次先遵循用户设置；截断时仅升级一次，由接口决定重试请求的输出额度。
 async function callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
     const budget = config.requestBudget || { remaining: 3 };
+    const policy = getOutputLimitPolicy(config.outputLimitKey);
+    const configuredLimit = Number(config.maxOutputTokens);
+    let maxTokens = config.outputLimitEnabled === false || policy?.useProviderDefault
+        ? null : (Number.isSafeInteger(configuredLimit) && configuredLimit > 0 ? configuredLimit : 2048);
+    let upgraded = false;
     let serverRetried = false;
     for (let attempt = 0; attempt < 3; attempt++) {
         if (window.aiGradingState.abortController?.signal.aborted) throw new Error('用户主动暂停');
         if (budget.remaining <= 0) throw new Error('AI请求次数已达到上限');
         budget.remaining--;
         try {
-            return await callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages);
+            const result = await callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages, maxTokens);
+            if (upgraded && config.outputObservation) config.outputObservation.upgraded = true;
+            return result;
         } catch (error) {
+            if (error.code === 'OUTPUT_TRUNCATED' && maxTokens !== null && !upgraded && attempt < 2 && budget.remaining > 0) {
+                upgraded = true;
+                maxTokens = null;
+                if (onStreamUpdate) onStreamUpdate('回答较长，正在继续分析…');
+                continue;
+            }
             if ((error.status === 429 || error.status >= 500) && !serverRetried && attempt < 2) {
                 serverRetried = true;
                 await new Promise(resolve => setTimeout(resolve, error.status === 429 ? 5000 : 2000));

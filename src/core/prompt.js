@@ -645,7 +645,7 @@ async function callAIGrading(base64DataArray, config, onStreamUpdate) {
             if (parsed.score === null) {
                 console.warn('⚠️ [诊断] 分数解析为 null');
             }
-            if (parsed.score !== null || callConfig.requestBudget.remaining === 0 || parseAttempt === 1) return parsed;
+            if (parsed.score !== null || callConfig.requestBudget.remaining === 0 || parseAttempt === 1 || callConfig.outputObservation?.upgraded) return parsed;
             console.warn('⚠️ [诊断] 正在重新获取可识别的评分结果');
     }
 }

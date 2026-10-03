@@ -500,6 +500,7 @@ function stopAutoGrading() {
     window.aiGradingState.isPaused = false;
     window.aiGradingState.gradingMode = 'normal';
     window.aiGradingState.errorRetryCount = 0;
+    window.aiGradingState.outputLimitPolicy = null;
     if (window.aiGradingState.abortController) window.aiGradingState.abortController.abort();
 
     const btn = document.querySelector('.ai-grade-btn');
