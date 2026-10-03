@@ -30,19 +30,21 @@ function setup(responses) {
     return { call: () => context.callAI('题目', ['image'], config), requests };
 }
 
-test('思考内容占满首次额度时扩大输出并取得完整正文', async () => {
-    const first = event({ delta: { reasoning_content: '思考' }, finish_reason: 'length' });
-    const second = event({ delta: { content: '得分：12' }, finish_reason: null }) + event({ delta: {}, finish_reason: 'stop' }) + 'data: [DONE]\n\n';
-    const { call, requests } = setup([{ body: first }, { body: second }]);
+test('默认请求使用接口输出额度并取得思考后的评分正文', async () => {
+    const body = event({ delta: { reasoning_content: '思考'.repeat(6000) }, finish_reason: null }) +
+        event({ delta: { content: '得分：12' }, finish_reason: null }) +
+        event({ delta: {}, finish_reason: 'stop' }) + 'data: [DONE]\n\n';
+    const { call, requests } = setup([{ body }]);
     assert.equal(await call(), '得分：12');
-    assert.deepEqual(requests.map(r => r.max_tokens), [2048, 8192]);
+    assert.equal(Object.hasOwn(requests[0], 'max_tokens'), false);
+    assert.equal(requests.length, 1);
 });
 
-test('8192 再次截断时不使用部分评分', async () => {
+test('接口默认额度截断时不使用部分评分或重复请求', async () => {
     const body = event({ delta: { content: '得分：1' }, finish_reason: 'length' });
-    const { call, requests } = setup([{ body }, { body }]);
+    const { call, requests } = setup([{ body }]);
     await assert.rejects(call(), /结果不完整/);
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 1);
 });
 
 test('超时状态不明时不重复发送请求', async () => {
@@ -63,20 +65,19 @@ test('流式响应缺少结束标记时暂停', async () => {
     await assert.rejects(call(), /未完整结束/);
 });
 
-test('截断与限流叠加时仍遵守三次请求上限', async () => {
+test('限流后截断时停止请求并保留待核查状态', async () => {
     const truncated = event({ delta: { reasoning_content: '思考' }, finish_reason: 'length' });
     const { call, requests } = setup([
-        { body: truncated },
         { status: 429, body: JSON.stringify({ error: { message: 'rate limit' } }) },
         { body: truncated }
     ]);
     await assert.rejects(call(), /结果不完整/);
-    assert.deepEqual(requests.map(r => r.max_tokens), [2048, 8192, 8192]);
+    assert.equal(requests.length, 2);
 });
 
 test('普通 JSON 响应的截断标记同样阻止评分', async () => {
     const body = JSON.stringify({ choices: [{ message: { content: '得分：1' }, finish_reason: 'length' }] });
-    const { call, requests } = setup([{ body }, { body }]);
+    const { call, requests } = setup([{ body }]);
     await assert.rejects(call(), /结果不完整/);
-    assert.equal(requests.length, 2);
+    assert.equal(requests.length, 1);
 });
