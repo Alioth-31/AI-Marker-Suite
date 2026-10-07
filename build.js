@@ -97,6 +97,8 @@ const BUILD_CONFIGS = [
             'adapters/xinjiaoyu/adapter.js',
             'adapters/xinkao/selectors.js',
             'adapters/xinkao/adapter.js',
+            'adapters/xinkao-2/selectors.js',
+            'adapters/xinkao-2/adapter.js',
             'adapters/runjian/selectors.js',
             'adapters/runjian/adapter.js',
             'adapters/xueba54/selectors.js',
@@ -129,7 +131,7 @@ const BUILD_CONFIGS = [
         header: {
             name: 'AI-Marker-Suite',
             namespace: 'https://aimarking.five-plus-one.com/',
-            description: 'AI自动批改助手，支持智学网、七天网络、好分数、五岳阅卷、阅小二、华翰云、光大阅卷、云阅卷、新教育、鑫考、润建、54学霸、九科星、慧阅卷、乐华阅卷、慧学星、粤教翔云、云阅卷(好分数)、科耘、威科姆、C30、AMEQP、海云智评等平台。自动识别答案、智能评分、自动提交！',
+            description: 'AI自动批改助手，支持智学网、七天网络、好分数、五岳阅卷、阅小二、华翰云、光大阅卷、云阅卷、新教育、鑫考、鑫考(内网)、润建、54学霸、九科星、慧阅卷、乐华阅卷、慧学星、粤教翔云、云阅卷(好分数)、科耘、威科姆、C30、AMEQP、海云智评等平台。自动识别答案、智能评分、自动提交！',
             author: '5plus1',
             match: [
                 'https://www.zhixue.com/*',
@@ -162,6 +164,7 @@ const BUILD_CONFIGS = [
                 '*://wyna.onlyets.com/*',
                 '*://zy.iclass30.com/*',
                 '*://*/AMEQP/Webroot/mar/*',
+                '*://*/biluo/*',
                 '*://zp.kaow.cn/*',
             ],
             include: [
