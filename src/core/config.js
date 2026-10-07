@@ -3,7 +3,7 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.21.12.3',
+    VERSION: '1.21.12.4',
 
     /** 轻量级更新检查 UL（优先使用，~1KB）—— stable 渠道默认值 */
     MANIFEST_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/manifest.json',
@@ -44,6 +44,9 @@ const SCRIPT_CONFIG = {
      * 运行时从远端 manifest.json 加载，此处作为构建时的数据源
      */
     CHANGELOG: {
+        '1.21.12.4': [
+            '【新平台】新增鑫考内网版 (biluo/display.jsp) 平台适配，支持 fen 属性满分提取、inputkey 键盘确认提交和 URL query 任务标识',
+        ],
         '1.21.12.3': [
             '【新平台】新增海云智评 (zp.kaow.cn) 平台适配，支持 OSS 裁剪答题卡多页取图、多小题满分提取和提交二次确认弹窗自动处理',
         ],
