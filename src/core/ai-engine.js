@@ -675,7 +675,7 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
 
     // 分差在阈值内
     if (diff <= threshold) {
-        const finalScore = Math.round((scoreA + scoreB) / 2);
+        let finalScore = Math.round((scoreA + scoreB) / 2);
         console.log(`✅ [双评] 分差在阈值内，取平均分: ${finalScore}`);
 
         // 处理分小题分数：对每个小题分别取平均
@@ -693,6 +693,14 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
                 };
             });
             console.log(`✅ [双评] 分小题平均: ${finalSubScores.map(s => s.label + '=' + s.score).join(', ')}`);
+
+            // 总分与小题之和一致性校准（各自取整会导致偏差，以小题之和为准）
+            const subSum = finalSubScores.reduce((s, u) => s + (u.score || 0), 0);
+            const allScored = finalSubScores.every(u => u.score !== null && u.score !== undefined);
+            if (allScored && Math.abs(subSum - finalScore) > 0.01) {
+                console.warn(`⚠️ [双评] 小题之和(${subSum})与平均总分(${finalScore})不一致，以小题之和为准`);
+                finalScore = subSum;
+            }
         }
 
         // 勤勉度也取平均

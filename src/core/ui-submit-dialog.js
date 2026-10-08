@@ -30,6 +30,13 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
 
     console.log(`🪟 [诊断] showAutoSubmitDialog 调用 — 分数: ${score}, 模式: ${mode}, 双评: ${!!dualEval}`);
 
+    // 小题之和与最终得分一致性检查（不一致时给教师醒目提示）
+    let subSum = null;
+    if (subScores && subScores.length > 0 && subScores.every(sq => sq.score !== null && sq.score !== undefined)) {
+        subSum = subScores.reduce((s, u) => s + (u.score || 0), 0);
+    }
+    const scoreMismatch = subSum !== null && Math.abs(subSum - score) > 0.01;
+
     window.aiGradingState.countdownPaused = false;
     const studentAnswer = window.aiGradingState.currentStudentAnswer;
     const imageUrls = window.aiGradingState.currentImageUrls || [];
@@ -247,6 +254,10 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
                         ${diligence && diligence.bonus > 0 ? `<div style="font-size:12px;color:#34A853;font-weight:500;">准确性 ${diligence.accuracyScore} + 勤勉 +${diligence.bonus}</div>` : ''}
                     </div>
                 </div>
+                ${scoreMismatch ? `
+                <div style="margin:8px 0 12px;padding:10px 14px;background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;font-size:12px;color:#8D6E00;line-height:1.6;">
+                    ⚠️ <b>分数不一致提示</b>：最终得分 ${score} 与各小题之和 ${subSum} 不一致（各小题会分别填入平台，请以小题为准，核对后再提交）
+                </div>` : ''}
                 ${subScores && subScores.length > 0 ? `
                 <div class="asd-info-block">
                     <div class="asd-info-label">各小题得分</div>
@@ -274,6 +285,10 @@ function showAutoSubmitDialog(score, comment, subScores, extraInfo) {
                 <div class="asd-info-block">
                     <div class="asd-info-label">双评结果</div>
                     <div style="padding:10px 14px;background:rgba(0,0,0,0.02);border-radius:8px;border:1px solid rgba(0,0,0,0.04);">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                            <span style="font-size:12px;color:#666;">模型A / 模型B</span>
+                            <span style="font-size:13px;font-weight:600;color:#1d1d1f;">${dualEval.scoreA !== null && dualEval.scoreA !== undefined ? dualEval.scoreA : '—'} / ${dualEval.scoreB !== null && dualEval.scoreB !== undefined ? dualEval.scoreB : '—'}</span>
+                        </div>
                         <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
                             <span style="font-size:12px;color:#666;">分差</span>
                             <span style="font-size:13px;font-weight:600;color:${(dualEval.diff || 0) > 2 ? '#D93025' : '#1d1d1f'};">${dualEval.diff !== null ? dualEval.diff + '分' : '—'}</span>
