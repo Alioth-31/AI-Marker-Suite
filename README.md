@@ -2,7 +2,7 @@
 
 > **晚上挂机睡觉，早上起来全改完。**
 
-[![版本](https://img.shields.io/badge/version-1.21.12.4-blue.svg)](https://github.com/five-plus-one/AI-Marker-Suite)
+[![版本](https://img.shields.io/badge/version-1.21.13.0-blue.svg)](https://github.com/five-plus-one/AI-Marker-Suite)
 [![许可证](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 
 ---
@@ -167,20 +167,15 @@
 
 > 完整更新日志见 [更新日志页面](https://aimarking.five-plus-one.com/changelog)
 
-### v1.21.12.4 (2026-10-03)
-**新平台**
-- 新增鑫考内网版 (biluo/display.jsp) 平台适配，支持 fen 属性满分提取、inputkey 键盘确认提交和 URL query 任务标识
-
-### v1.21.12.3 (2026-10-03)
-**新平台**
-- 新增海云智评 (zp.kaow.cn) 平台适配，支持 OSS 裁剪答题卡多页取图、多小题满分提取和提交二次确认弹窗自动处理
-
-**修复**
-- 工作流可配置回答长度上限，修复思考占满输出额度导致批改正文为空（#107）
-
-### v1.21.12.1 (2026-09-29)
+### v1.21.13 (2026-10-08)
 **新平台**
 - 新增阅小二 (haoyuejuan.com) 平台适配，与五岳阅卷同构，支持 OSS 裁剪答题卡、分小题评分和回评模式识别
+- 新增海云智评 (zp.kaow.cn) 平台适配，支持 OSS 裁剪答题卡多页取图、多小题满分提取和提交二次确认弹窗自动处理
+- 新增鑫考内网版 (biluo/display.jsp) 平台适配，支持 fen 属性满分提取、inputkey 键盘确认提交和 URL query 任务标识
+
+**修复**
+- 补全脚本头 match 与 description 字段中的阅小二平台入口
+- 修复思考类模型输出额度被 reasoning 占满导致批改正文为空的问题，新增工作流回答长度上限配置（#107）
 
 ### v1.21.12 (2026-09-24)
 **新平台**
