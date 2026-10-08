@@ -508,6 +508,9 @@ function parseSubQuestionResponse(text, config) {
         }
 
         console.log(`🧠 [诊断] 分小题解析结果 — 总分: ${structured.score}, 各小题: ${subScores.map(s => s.label + '=' + s.score).join(', ')}`);
+        if (subScores.some(item => item.score === null)) {
+            return { ...structured, score: null, subScores };
+        }
         return { ...structured, subScores };
     }
 
@@ -596,14 +599,15 @@ function parseLegacySubQuestionResponse(text, config) {
         totalMatch = clean.match(/总分\s*(\d+\.?\d*)\s*分/);
         if (totalMatch) totalScore = parseFloat(totalMatch[1]);
     }
-    if (totalScore === null) totalScore = calculatedTotal;
+    if (totalScore === null && subScores.every(item => item.score !== null)) totalScore = calculatedTotal;
+    if (subScores.some(item => item.score === null)) totalScore = null;
 
     console.log(`🧠 [诊断] 分小题解析结果 — 总分: ${totalScore}, 各小题: ${subScores.map(s => s.label + '=' + s.score).join(', ')}`);
     return { studentAnswer, score: totalScore, rawScore: totalScore, comment: '', subScores, diligenceLevel: 0, diligenceReason: '', _sections: {} };
 }
 
 // ========== 打分专用函数 ==========
-function callAIGrading(base64DataArray, config, onStreamUpdate) {
+async function callAIGrading(base64DataArray, config, onStreamUpdate) {
     // 从 scoring.units 派生 subQuestions（唯一数据源）
     const units = config.scoring?.units || [];
     const subQuestions = units.length > 1
@@ -612,7 +616,7 @@ function callAIGrading(base64DataArray, config, onStreamUpdate) {
     const hasSub = subQuestions.length > 0;
 
     // 将派生的 subQuestions 注入 config 供 prompt 函数使用
-    const callConfig = { ...config, subQuestions: hasSub ? subQuestions : undefined };
+    const callConfig = { ...config, subQuestions: hasSub ? subQuestions : undefined, requestBudget: { remaining: 3 } };
 
     const prompt = hasSub ? buildSubQuestionPrompt(callConfig) : buildStructuredPrompt(callConfig);
 
@@ -626,9 +630,9 @@ function callAIGrading(base64DataArray, config, onStreamUpdate) {
         console.log(`📋 [诊断] 评分单元配置 — 共 ${subQuestions.length} 个: ${subQuestions.map(sq => `${sq.label}(满分${sq.maxScore ?? '未设置'})`).join(', ')}`);
     }
 
-    return callAIWithRetry(prompt, base64DataArray, callConfig, onStreamUpdate, fieldImages)
-        .then(fullText => {
-            console.log('📝 [诊断] AI原始返回内容：\n' + fullText);
+    for (let parseAttempt = 0; parseAttempt < 2; parseAttempt++) {
+            const fullText = await callAIWithRetry(prompt, base64DataArray, callConfig, onStreamUpdate, fieldImages);
+            console.log('📝 [诊断] AI返回内容长度:', fullText.length);
 
             const parsed = hasSub
                 ? parseSubQuestionResponse(fullText, callConfig)
@@ -639,10 +643,11 @@ function callAIGrading(base64DataArray, config, onStreamUpdate) {
                 console.log(`📋 [诊断] 解析到 ${sectionKeys.length} 个段落: ${sectionKeys.join(', ')}`);
             }
             if (parsed.score === null) {
-                console.warn('⚠️ [诊断] 分数解析为 null，AI原始文本前200字: ' + fullText.substring(0, 200));
+                console.warn('⚠️ [诊断] 分数解析为 null');
             }
-            return parsed;
-        });
+            if (parsed.score !== null || callConfig.requestBudget.remaining === 0 || parseAttempt === 1 || callConfig.outputObservation?.upgraded) return parsed;
+            console.warn('⚠️ [诊断] 正在重新获取可识别的评分结果');
+    }
 }
 
 // ========== 分数计算函数（委托给 ScoreCalculator）==========

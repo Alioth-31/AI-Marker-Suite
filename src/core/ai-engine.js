@@ -336,6 +336,10 @@ const WorkflowManager = {
         if (callConfig && wf.model.reasoningEffort) {
             callConfig.reasoningEffort = wf.model.reasoningEffort;
         }
+        if (callConfig) {
+            callConfig.outputLimitEnabled = wf.outputLimitEnabled !== false;
+            callConfig.maxOutputTokens = wf.maxOutputTokens || 2048;
+        }
         return callConfig;
     },
     setActive(id) {
@@ -378,7 +382,7 @@ const WorkflowManager = {
 WorkflowManager.init();
 
 // ========== 通用 AI 请求函数 ==========
-function callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
+function callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages, maxTokens) {
     return new Promise((resolve, reject) => {
         const messageContent = [{ type: "text", text: prompt }];
         // 合并额外图片（来自题目/答案/评分标准）+ 学生答题卡图片
@@ -390,9 +394,9 @@ function callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
         const requestBody = {
             model: config.model,
             messages: [{ role: "user", content: messageContent }],
-            max_tokens: 2048,
             stream: true
         };
+        if (maxTokens !== null) requestBody.max_tokens = maxTokens;
 
         // 如果配置了思考链深度，添加 reasoning_effort 参数
         if (config.reasoningEffort) {
@@ -405,6 +409,12 @@ function callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
         let buffer = '';
         let settled = false;
         let progressCallCount = 0;
+        let finishReason = null;
+        let usage = null;
+        let reasoningChars = 0;
+        let streamError = null;
+        let streamDone = false;
+        let sawSSE = false;
 
         function parseSSEBuffer(chunk) {
             buffer += chunk;
@@ -413,11 +423,18 @@ function callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
             for (let line of lines) {
                 line = line.trim();
                 if (!line.startsWith('data:')) continue;
+                sawSSE = true;
                 const dataStr = line.substring(5).trim();
-                if (dataStr === '[DONE]' || !dataStr) continue;
+                if (dataStr === '[DONE]') { streamDone = true; continue; }
+                if (!dataStr) continue;
                 try {
                     const parsed = JSON.parse(dataStr);
-                    const delta = parsed.choices?.[0]?.delta?.content || '';
+                    if (parsed.error) streamError = parsed.error.message || '流式响应错误';
+                    const choice = parsed.choices?.[0];
+                    if (choice?.finish_reason) finishReason = choice.finish_reason;
+                    if (parsed.usage) usage = parsed.usage;
+                    reasoningChars += (choice?.delta?.reasoning_content || '').length;
+                    const delta = choice?.delta?.content || '';
                     if (delta) {
                         fullText += delta;
                         if (onStreamUpdate) onStreamUpdate(fullText);
@@ -434,6 +451,7 @@ function callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
                 'Authorization': `Bearer ${config.apiKey}`
             },
             data: JSON.stringify(requestBody),
+            timeout: 120000,
             onprogress: function(res) {
                 if (res.responseText) {
                     progressCallCount++;
@@ -469,18 +487,27 @@ function callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
                         }
                     }
 
-                    return reject(new Error(`API报错 (${res.status}): ${errorMsg}`));
+                    const error = new Error(`API报错 (${res.status}): ${errorMsg}`);
+                    error.status = res.status;
+                    return reject(error);
                 }
 
                 fullText = '';
                 buffer = '';
+                finishReason = null;
+                streamDone = false;
+                sawSSE = false;
+                reasoningChars = 0;
                 parseSSEBuffer(responseText);
 
                 if (!fullText && responseText) {
                     console.log('📝 [诊断] SSE解析无结果，尝试解析为普通JSON响应...');
                     try {
                         const jsonObj = JSON.parse(responseText);
+                        if (jsonObj.error) streamError = jsonObj.error.message || '响应错误';
+                        if (jsonObj.usage) usage = jsonObj.usage;
                         if (jsonObj.choices && jsonObj.choices[0]) {
+                            finishReason = jsonObj.choices[0].finish_reason || finishReason;
                             if (jsonObj.choices[0].message && jsonObj.choices[0].message.content) {
                                 fullText = jsonObj.choices[0].message.content;
                             } else if (jsonObj.choices[0].delta && jsonObj.choices[0].delta.content) {
@@ -497,6 +524,18 @@ function callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
                     onStreamUpdate(fullText);
                 }
 
+                console.log('[AI响应]', { finishReason, usage, reasoningChars, contentChars: fullText.length });
+                if (streamError) return reject(new Error(`API响应错误: ${streamError}`));
+                if (finishReason === 'length') {
+                    const error = new Error(maxTokens === null
+                        ? 'AI回答达到接口输出上限，结果不完整；请检查模型设置后继续批改'
+                        : 'AI回答达到设定的输出上限，结果不完整');
+                    error.code = 'OUTPUT_TRUNCATED';
+                    return reject(error);
+                }
+                if (finishReason && finishReason !== 'stop') return reject(new Error(`AI响应未正常完成 (${finishReason})`));
+                if (sawSSE && !finishReason && !streamDone) return reject(new Error('AI响应未完整结束，请检查网络后继续批改'));
+                if (!fullText.trim()) return reject(new Error('AI未返回可用内容，请检查模型输出设置'));
                 resolve(fullText);
             },
             onerror: function() {
@@ -524,40 +563,62 @@ function callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
 }
 
 // ========== 带重试的 AI 请求包装 ==========
-// 对瞬时错误（超时/网络/429限流/5xx）自动重试，持久错误直接抛出
-async function callAIWithRetry(prompt, base64DataArray, config, onStreamUpdate, extraImages, maxRetries = 1) {
-    let lastError = null;
+function getOutputLimitPolicy(key) {
+    if (!key) return null;
+    const state = window.aiGradingState;
+    if (!state.outputLimitPolicy || state.outputLimitPolicy.key !== key) {
+        state.outputLimitPolicy = { key, recent: [], useProviderDefault: false };
+    }
+    return state.outputLimitPolicy;
+}
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+function recordOutputLimitOutcome(config) {
+    if (!config.outputLimitKey || config.outputLimitEnabled === false) return;
+    const policy = getOutputLimitPolicy(config.outputLimitKey);
+    policy.recent.push(Boolean(config.outputObservation?.upgraded));
+    if (policy.recent.length > 5) policy.recent.shift();
+    if (policy.recent.length === 5 && policy.recent.filter(Boolean).length >= 3) {
+        policy.useProviderDefault = true;
+    }
+}
+
+// 每次先遵循用户设置；截断时仅升级一次，由接口决定重试请求的输出额度。
+async function callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
+    const budget = config.requestBudget || { remaining: 3 };
+    const policy = getOutputLimitPolicy(config.outputLimitKey);
+    const configuredLimit = Number(config.maxOutputTokens);
+    let maxTokens = config.outputLimitEnabled === false || policy?.useProviderDefault
+        ? null : (Number.isSafeInteger(configuredLimit) && configuredLimit > 0 ? configuredLimit : 2048);
+    let upgraded = false;
+    let serverRetried = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (window.aiGradingState.abortController?.signal.aborted) throw new Error('用户主动暂停');
+        if (budget.remaining <= 0) throw new Error('AI请求次数已达到上限');
+        budget.remaining--;
         try {
-            return await callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages);
+            const result = await callAIOnce(prompt, base64DataArray, config, onStreamUpdate, extraImages, maxTokens);
+            if (upgraded && config.outputObservation) config.outputObservation.upgraded = true;
+            return result;
         } catch (error) {
-            lastError = error;
-            const msg = error.message || '';
-
-            // 判断是否为可重试的瞬时错误
-            const isTransient =
-                msg.includes('请求超时') ||
-                msg.includes('网络请求被拦截') ||
-                msg.includes('API报错 (429') ||
-                msg.includes('API报错 (5') ||
-                msg.includes('图片下载超时') ||
-                msg.includes('图片下载跨域请求被拒绝');
-
-            if (isTransient && attempt < maxRetries) {
-                // 429限流等5秒，其他瞬时错误等2秒
-                const delay = msg.includes('429') ? 5000 : 2000;
-                console.warn(`⚠️ [重试] 第${attempt + 1}次失败: ${msg}，${delay / 1000}秒后重试...`);
-                await new Promise(r => setTimeout(r, delay));
+            if (error.code === 'OUTPUT_TRUNCATED' && maxTokens !== null && !upgraded && attempt < 2 && budget.remaining > 0) {
+                upgraded = true;
+                maxTokens = null;
+                if (onStreamUpdate) onStreamUpdate('回答较长，正在继续分析…');
                 continue;
             }
-
-            // 不可重试的错误或已达最大重试次数
+            if ((error.status === 429 || error.status >= 500) && !serverRetried && attempt < 2) {
+                serverRetried = true;
+                await new Promise(resolve => setTimeout(resolve, error.status === 429 ? 5000 : 2000));
+                continue;
+            }
             throw error;
         }
     }
+    throw new Error('AI请求次数已达到上限');
+}
 
-    throw lastError;
+async function callAIWithRetry(prompt, base64DataArray, config, onStreamUpdate, extraImages) {
+    return callAI(prompt, base64DataArray, config, onStreamUpdate, extraImages);
 }
 
 // ========== 双评引擎 ==========
@@ -604,88 +665,9 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
     let detailA = resultA.status === 'fulfilled' ? resultA.value : null;
     let detailB = resultB.status === 'fulfilled' ? resultB.value : null;
 
-    const MAX_DUAL_RETRIES = 5;
-
-    // 两个都失败 → 重试两个
-    if (scoreA === null && scoreB === null) {
-        const errA = resultA.reason?.message || '';
-        const errB = resultB.reason?.message || '';
-
-        // 用户主动暂停 → 直接抛出，不重试
-        if (errA.includes('用户主动暂停') || errA.includes('用户暂停') ||
-            errB.includes('用户主动暂停') || errB.includes('用户暂停')) {
-            throw resultA.reason || resultB.reason;
-        }
-
-        console.warn('⚠️ [双评] 首次双评均失败，等待2秒后重试两个模型...');
-        console.warn('  主模型错误:', errA || resultA.reason);
-        console.warn('  副模型错误:', errB || resultB.reason);
-        if (onStreamUpdate) onStreamUpdate('⚠️ 双评均失败，正在重试...');
-        await new Promise(r => setTimeout(r, 2000));
-
-        [resultA, resultB] = await Promise.allSettled([
-            callAIGrading(base64DataArray, { ...config, ...primaryConfig }, null),
-            callAIGrading(base64DataArray, { ...config, ...secondaryConfig }, null)
-        ]);
-
-        scoreA = resultA.status === 'fulfilled' ? resultA.value.score : null;
-        scoreB = resultB.status === 'fulfilled' ? resultB.value.score : null;
-        detailA = resultA.status === 'fulfilled' ? resultA.value : null;
-        detailB = resultB.status === 'fulfilled' ? resultB.value : null;
-
-        // 重试后仍然都失败
-        if (scoreA === null && scoreB === null) {
-            const errA = resultA.reason?.message || resultA.reason || '未知';
-            const errB = resultB.reason?.message || resultB.reason || '未知';
-            console.error('❌ [双评] 重试后仍然双评均失败');
-            console.error('  主模型错误:', errA);
-            console.error('  副模型错误:', errB);
-            throw new Error(`双评均失败(已重试) — 主: ${errA}, 副: ${errB}`);
-        }
-    }
-
-    // 一个失败 → 只重试失败的那个，最多重试 MAX_DUAL_RETRIES 次
-    let dualRetryCount = 0;
-    while ((scoreA === null || scoreB === null) && dualRetryCount < MAX_DUAL_RETRIES) {
-        // 用户主动暂停 → 直接抛出，不重试
-        const failMsg = scoreA === null
-            ? (resultA.reason?.message || '')
-            : (resultB.reason?.message || '');
-        if (failMsg.includes('用户主动暂停') || failMsg.includes('用户暂停')) {
-            throw scoreA === null ? resultA.reason : resultB.reason;
-        }
-
-        dualRetryCount++;
-        const waitSec = dualRetryCount <= 2 ? 2 : 5;
-        if (scoreA === null) {
-            console.warn(`⚠️ [双评] 主模型失败，重试主模型(${dualRetryCount}/${MAX_DUAL_RETRIES})...`);
-            if (onStreamUpdate) onStreamUpdate(`⚠️ 主模型失败，正在重试(${dualRetryCount}/${MAX_DUAL_RETRIES})...`);
-            await new Promise(r => setTimeout(r, waitSec * 1000));
-            resultA = (await Promise.allSettled([
-                callAIGrading(base64DataArray, { ...config, ...primaryConfig }, null)
-            ]))[0];
-            scoreA = resultA.status === 'fulfilled' ? resultA.value.score : null;
-            detailA = resultA.status === 'fulfilled' ? resultA.value : null;
-        } else {
-            console.warn(`⚠️ [双评] 副模型失败，重试副模型(${dualRetryCount}/${MAX_DUAL_RETRIES})...`);
-            if (onStreamUpdate) onStreamUpdate(`⚠️ 副模型失败，正在重试(${dualRetryCount}/${MAX_DUAL_RETRIES})...`);
-            await new Promise(r => setTimeout(r, waitSec * 1000));
-            resultB = (await Promise.allSettled([
-                callAIGrading(base64DataArray, { ...config, ...secondaryConfig }, null)
-            ]))[0];
-            scoreB = resultB.status === 'fulfilled' ? resultB.value.score : null;
-            detailB = resultB.status === 'fulfilled' ? resultB.value : null;
-        }
-    }
-
-    // 重试耗尽后仍有一个失败 → 降级为单评（最后兜底）
-    if (scoreA === null) {
-        console.warn(`⚠️ [双评] 主模型重试${MAX_DUAL_RETRIES}次后仍失败，降级使用副模型结果`);
-        return { ...detailB, dualEval: { scoreA: null, scoreB, diff: null, result: 'fallback-b', detailA: null, detailB: detailB?._sections || null } };
-    }
-    if (scoreB === null) {
-        console.warn(`⚠️ [双评] 副模型重试${MAX_DUAL_RETRIES}次后仍失败，降级使用主模型结果`);
-        return { ...detailA, dualEval: { scoreA, scoreB: null, diff: null, result: 'fallback-a', detailA: detailA?._sections || null, detailB: null } };
+    if (scoreA === null || scoreB === null) {
+        const failure = resultA.status === 'rejected' ? resultA.reason : resultB.status === 'rejected' ? resultB.reason : null;
+        throw failure || new Error('双评结果不完整，请检查两个模型的回答后继续批改');
     }
 
     const diff = Math.abs(scoreA - scoreB);

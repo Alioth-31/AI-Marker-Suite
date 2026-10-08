@@ -3,7 +3,7 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.21.12.0',
+    VERSION: '1.21.13.0',
 
     /** 轻量级更新检查 UL（优先使用，~1KB）—— stable 渠道默认值 */
     MANIFEST_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/manifest.json',
@@ -44,6 +44,13 @@ const SCRIPT_CONFIG = {
      * 运行时从远端 manifest.json 加载，此处作为构建时的数据源
      */
     CHANGELOG: {
+        '1.21.13': [
+            '【新平台】新增阅小二 (haoyuejuan.com) 平台适配，与五岳阅卷同构，支持 OSS 裁剪答题卡、分小题评分和回评模式识别',
+            '【新平台】新增海云智评 (zp.kaow.cn) 平台适配，支持 OSS 裁剪答题卡多页取图、多小题满分提取和提交二次确认弹窗自动处理',
+            '【新平台】新增鑫考内网版 (biluo/display.jsp) 平台适配，支持 fen 属性满分提取、inputkey 键盘确认提交和 URL query 任务标识',
+            '【修复】补全脚本头 match 与 description 字段中的阅小二平台入口',
+            '【修复】修复思考类模型输出额度被 reasoning 占满导致批改正文为空的问题，新增工作流回答长度上限配置（#107）',
+        ],
         '1.21.12': [
             '【新平台】新增AMEQP网上评卷平台适配，支持内网裸IP部署、题块裁剪图取完整图、多评分单元和jQuery+EasyUI组件交互',
             '【修复】修复乐华阅卷满分按钮无法命中导致不自动跳下一张的问题：分数匹配改为数值解析，并兼容带「满」标记的按钮',
