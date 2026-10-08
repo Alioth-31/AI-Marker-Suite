@@ -622,7 +622,7 @@ async function callAIWithRetry(prompt, base64DataArray, config, onStreamUpdate, 
 }
 
 // ========== 双评引擎 ==========
-// 双评小题分数合并（逐题取平均；两模型分数不同时并列两份评语）
+// 双评小题分数合并（逐题取平均；评语有差异时并列两份）
 function mergeDualSubScores(detailA, detailB) {
     if (!detailA?.subScores || !detailB?.subScores ||
         detailA.subScores.length !== detailB.subScores.length) {
@@ -633,11 +633,12 @@ function mergeDualSubScores(detailA, detailB) {
         const avgScore = (sqA.score !== null && sqA.score !== undefined && sqB.score !== null && sqB.score !== undefined)
             ? Math.round((sqA.score + sqB.score) / 2)
             : (sqA.score ?? sqB.score);
-        let comment = sqA.comment || '';
-        if (sqA.score !== sqB.score) {
-            const cA = sqA.comment ? `A: ${sqA.comment}` : '';
-            const cB = sqB.comment ? `B: ${sqB.comment}` : '';
-            comment = [cA, cB].filter(Boolean).join('；');
+        // 按评语内容决定是否并列（与给分是否相同无关）：措辞不同就都展示
+        const cA = (sqA.comment || '').trim();
+        const cB = (sqB.comment || '').trim();
+        let comment = cA || cB;
+        if (cA && cB && cA !== cB) {
+            comment = `A: ${cA}；B: ${cB}`;
         }
         return { ...sqA, score: avgScore, comment };
     });
