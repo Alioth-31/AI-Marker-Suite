@@ -3,7 +3,7 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.21.14.3',
+    VERSION: '1.21.14.4',
 
     /** 轻量级更新检查 UL（优先使用，~1KB）—— stable 渠道默认值 */
     MANIFEST_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/manifest.json',
@@ -44,6 +44,9 @@ const SCRIPT_CONFIG = {
      * 运行时从远端 manifest.json 加载，此处作为构建时的数据源
      */
     CHANGELOG: {
+        '1.21.14.4': [
+            '【新平台】新增上进教育服务云平台 (sipd.cn) 平台适配，与威科姆悦卷通同构，支持 data-stu 换卷检测、平台任务标识和0分确认弹窗自动处理',
+        ],
         '1.21.14.3': [
             '【修复】工作流双评配置（分差阈值等）在版本升级时被覆盖为默认值，现只补缺失字段保留用户自定义值',
             '【修复】教师反馈小题分留空时总分实时计算未回退到 AI 原始分',
