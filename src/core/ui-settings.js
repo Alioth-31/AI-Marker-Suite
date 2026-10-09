@@ -805,6 +805,29 @@ function createSettingsPanel(options) {
                 <!-- ===== AI 配置 ===== -->
                 <div class="group-title" id="group-ai">AI 配置</div>
 
+                <!-- API / Agent 模式，无需指定 Agent 品牌 -->
+                <div class="form-section">
+                    <div class="section-header"><h4>评分方式</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+                    <div class="section-body">
+                        <div class="form-group">
+                            <label>使用方式</label>
+                            <div style="display:flex;gap:18px;">
+                                <label><input type="radio" name="agent-execution-mode" value="api"> 模型 API</label>
+                                <label><input type="radio" name="agent-execution-mode" value="agent"> 本地 Agent</label>
+                            </div>
+                        </div>
+                        <div id="agent-connection-config" style="display:none;">
+                            <div class="form-group"><label>本地 Agent 配对令牌</label>
+                                <input id="agent-pairing-token" type="password" autocomplete="off" placeholder="从本机 Agent Bridge 控制台复制令牌">
+                            </div>
+                            <div style="font-size:12px;color:#667085;line-height:1.6;">
+                                先在本机启动 agent-bridge/server.js。无需在此选择 Codex 或其他 Agent；
+                                本地 Bridge 决定连接的执行器。仅在获得阅卷数据使用授权时启用。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 工作流选择 -->
                 <div class="form-section highlight">
                     <div class="section-header"><h4>批改工作流</h4><svg class="section-arrow" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -1107,6 +1130,17 @@ function createSettingsPanel(options) {
     panel.querySelector('#btn-del-preset').onclick = handleDeletePreset;
     panel.querySelector('#preset-select').onchange = handlePresetChange;
     panel.querySelector('#save-config-btn').onclick = saveAISettings;
+    // 本地 Agent 模式仅改变执行方式；API 供应商与工作流配置原样保留。
+    const refreshAgentMode = () => {
+        const selected = panel.querySelector('input[name="agent-execution-mode"]:checked')?.value || 'api';
+        panel.querySelector('#agent-connection-config').style.display = selected === 'agent' ? '' : 'none';
+    };
+    panel.querySelectorAll('input[name="agent-execution-mode"]').forEach(radio => {
+        radio.addEventListener('change', refreshAgentMode);
+    });
+    panel.querySelector('input[name="agent-execution-mode"][value="' + AgentMode.getMode() + '"]').checked = true;
+    panel.querySelector('#agent-pairing-token').value = AgentMode.getToken();
+    refreshAgentMode();
 
     // Markdown 编辑事件（题目/答案/评分标准）— 点击整个预览容器打开编辑器
     panel.querySelectorAll('.md-preview-container').forEach(function (container) {
@@ -1409,6 +1443,7 @@ function setupSettingsMenuLayout(panel) {
     moveSection('grading', '分数设置');
     moveSection('grading', '勤勉加分');
     moveSection('grading', '空白答题卡检测');
+    moveSection('ai', '评分方式');
     moveSection('ai', '批改工作流');
     moveSection('ai', '供应商与模型');
     const apiWarning = configTab.querySelector('#api-key-warning');
@@ -2561,6 +2596,13 @@ function showWorkflowEditModal(wf) {
 }
 
 function saveAISettings() {
+    const executionMode = document.querySelector('input[name="agent-execution-mode"]:checked')?.value || 'api';
+    const pairingToken = document.getElementById('agent-pairing-token')?.value.trim() || '';
+    if (executionMode === 'agent' && !pairingToken) {
+        showToast('请先填写本机 Agent Bridge 配对令牌');
+        switchSettingsPage('ai');
+        return;
+    }
     const checkedMode = document.querySelector('input[name="grading-mode"]:checked');
     const gradingMode = checkedMode ? checkedMode.value : 'normal';
 
@@ -2575,6 +2617,8 @@ function saveAISettings() {
         return;
     }
 
+    AgentMode.setToken(pairingToken);
+    AgentMode.setMode(executionMode);
     // 保存供应商配置（仅保存当前编辑的供应商，不设置"活跃"供应商）
     const provider = ProviderManager.getProvider(providerName);
     if (provider) {
