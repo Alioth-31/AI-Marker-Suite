@@ -17,9 +17,6 @@ const SIPD_SELECTORS = {
     // 题目标题（如 "20(1-2) 试题答案"）
     QUESTION_TITLE: '#answerPanel .panel-heading span',
 
-    // 任务标识（平台 mark task id）
-    TASK_ID_INPUT: "input[name='input-rpe-title']",
-
     // 提交按钮
     SUBMIT_BUTTON: '#submitMark',
     SUBMIT_BUTTON_STEPS: '#submitSteps',

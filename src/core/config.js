@@ -3,7 +3,7 @@
 
 const SCRIPT_CONFIG = {
     /** 当前脚本版本号，修改此处即可同步更新所有引用 */
-    VERSION: '1.21.14.4',
+    VERSION: '1.21.14.5',
 
     /** 轻量级更新检查 UL（优先使用，~1KB）—— stable 渠道默认值 */
     MANIFEST_URL: 'https://auto-update.aimarking.five-plus-one.com/ota/manifest.json',
@@ -44,6 +44,9 @@ const SCRIPT_CONFIG = {
      * 运行时从远端 manifest.json 加载，此处作为构建时的数据源
      */
     CHANGELOG: {
+        '1.21.14.5': [
+            '【修复】上进教育平台绑定试题后刷新误弹新试题引导：任务标识误含每次进页都变的会话 ID，现改用 pathname+data-key 并自动迁移旧绑定',
+        ],
         '1.21.14.4': [
             '【新平台】新增上进教育服务云平台 (sipd.cn) 平台适配，与威科姆悦卷通同构，支持 data-stu 换卷检测、平台任务标识和0分确认弹窗自动处理',
         ],

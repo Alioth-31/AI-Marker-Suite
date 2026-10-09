@@ -3,7 +3,8 @@
 // 与威科姆悦卷通 (wuyuetong) 同一套阅卷系统，jQuery + ASP.NET WebForms
 // 实测要点：
 //   - 换卷信号是 #imageFullScreen[data-stu]：旧值 → '0' → 新值，URL 不变
-//   - input[name='input-rpe-title'] 是平台任务 ID (mParam.mtid)，换学生不变
+//   - 任务标识只用 pathname + data-key；input[name='input-rpe-title'] (mtid) 每次进页都变，
+//     是会话实例 ID 而非题目 ID，混入标识会导致刷新后误判新试题（#136）
 //   - 0 分提交弹 #zeroCheckModal，需自动点 #btn_0_ok，否则阻塞批改循环
 //   - Mark.setInputScore 是清空分数框的函数，禁止用于填分
 //   - submitKeyboard 提交时用 parseFloat($(this).val()) 直读输入框，原生 setter 填分有效
@@ -57,15 +58,44 @@ const SipdAdapter = {
     },
 
     getTaskIdentifier() {
-        // 实测：pathname、mtid、data-key 三者换学生均不变
-        // 组合使用：换题时任一变化即区分，不依赖单一信号
-        const mtidInput = document.querySelector(SIPD_SELECTORS.TASK_ID_INPUT);
-        const mtid = mtidInput ? (mtidInput.value || '') : '';
+        // 任务标识 = pathname + data-key。
+        // 注意：不能混入 input[name='input-rpe-title'] (mtid)——实测它每次进入阅卷页都会变
+        //（平台的会话实例 ID，非题目 ID），会导致同一道题刷新后匹配不上已绑定方案（#136）。
+        // pathname 与 data-key 在换学生、刷新场景下均稳定。
+        this._migrateLegacyBindings();
         const keys = Array.from(document.querySelectorAll(SIPD_SELECTORS.SCORE_INPUT_CONTAINER))
             .map(el => el.getAttribute('data-key'))
             .filter(Boolean)
             .join(',');
-        return [window.location.pathname, mtid, keys].join('::');
+        return [window.location.pathname, keys].join('::');
+    },
+
+    // 一次性迁移含 mtid 的旧绑定 key（pathname::mtid::datakey → pathname::datakey）
+    // 旧标识同一道题会分裂成多条绑定，迁移时后插入的覆盖先插入的（后绑定的优先）
+    _migrateLegacyBindings() {
+        if (window.__sipdBindingsMigrated) return;
+        window.__sipdBindingsMigrated = true;
+        try {
+            const bindings = window.PresetManager && window.PresetManager.data && window.PresetManager.data.bindings;
+            if (!bindings) return;
+            // 旧格式：pathname::纯数字mtid::datakey，pathname 含 /mark/v\d+/view/
+            const legacyPattern = /^(\/mark\/v\d+\/view\/[^:]+)::(\d+)::([^:]+)$/;
+            let changed = false;
+            for (const key of Object.keys(bindings)) {
+                const m = key.match(legacyPattern);
+                if (!m) continue;
+                const newKey = `${m[1]}::${m[3]}`;
+                bindings[newKey] = bindings[key];
+                delete bindings[key];
+                changed = true;
+            }
+            if (changed) {
+                window.PresetManager.save();
+                console.log('[上进教育] 已迁移旧任务标识绑定（mtid 不稳定，已从标识中移除）');
+            }
+        } catch (e) {
+            console.warn('[上进教育] 绑定迁移失败:', e);
+        }
     },
 
     async gatherAnswerImages() {
