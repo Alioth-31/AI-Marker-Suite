@@ -2,7 +2,7 @@
 
 > **晚上挂机睡觉，早上起来全改完。**
 
-[![版本](https://img.shields.io/badge/version-1.21.13.0-blue.svg)](https://github.com/five-plus-one/AI-Marker-Suite)
+[![版本](https://img.shields.io/badge/version-1.21.14.0-blue.svg)](https://github.com/five-plus-one/AI-Marker-Suite)
 [![许可证](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
 
 ---
@@ -166,6 +166,18 @@
 ## 更新日志
 
 > 完整更新日志见 [更新日志页面](https://aimarking.five-plus-one.com/changelog)
+
+### v1.21.14 (2026-10-09)
+**新平台**
+- 新增九五优评 (timesphoenix.com) 平台适配，支持 iframe 阅卷界面取图、分给分点评分、提交限速自适应和打分确认弹窗自动确认
+
+**修复**
+- 多小题模式下参考答案/评分标准未进入批改提示词的问题（连带修复提示词优化误报"原评分标准完全缺失"）
+- 提示词优化改为增量修订，强制保留原文全部条目细节，禁止概括压缩
+- AI 输出算式（如 2+2=4）时分数解析误取第一个数字的问题
+- 双评模式下分数计算/评分依据/小题评语误显示单模型原文的问题，现按合并后平均分重建，两模型评分不同时并列展示双方依据
+- 双评小题评语在两模型给分一致但评语措辞不同时也并列展示双方意见
+- 双评总分与小题之和不一致时以小题之和为准，提交弹窗新增分数不一致提示和双评原始分展示
 
 ### v1.21.13 (2026-10-08)
 **新平台**
