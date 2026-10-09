@@ -54,6 +54,7 @@ const CORE_MODULES = [
     'ui-modal.js',
     'ui-stream.js',
     'ui-button.js',
+    'agent-mode.js',     // API / Agent 切换
     'ai-engine.js',      // ProviderManager + callAI (需在 ui-settings 之前)
     'prompt.js',          // buildPrompt + parse 函数 (需在 ui-settings 之前)
     'ui-markdown.js',     // Markdown 渲染器 + 全屏编辑器 (需在 ui-settings 之前)
