@@ -2023,7 +2023,7 @@ function updateUIVisibility() {
     }
 
     // API 密钥未填写时显示警告
-    const hasKey = apiKeyInput.value.trim().length > 0;
+    const hasKey = AgentMode.getMode() === 'agent' ? !!AgentMode.getToken() : apiKeyInput.value.trim().length > 0;
     if (apiKeyWarning) {
         apiKeyWarning.classList.toggle('hidden', hasKey);
     }
@@ -2039,7 +2039,7 @@ function updateUIVisibility() {
 
 function updateGroupHints() {
     const apiKeyInput = document.getElementById('api-key');
-    const hasKey = apiKeyInput && apiKeyInput.value.trim().length > 0;
+    const hasKey = AgentMode.getMode() === 'agent' ? !!AgentMode.getToken() : (apiKeyInput && apiKeyInput.value.trim().length > 0);
     const required = validateRequiredFields({ showErrors: false });
 
     const groupAI = document.getElementById('group-ai');
@@ -2114,7 +2114,7 @@ function updateSettingsNavBadges() {
         plan: !document.getElementById('preset-select')?.value,
         grading: !_answerText || !_rubricText ||
             scoringUnits.some(u => !u.maxScore || u.maxScore <= 0),
-        ai: !apiKeyInput?.value.trim() || !endpointInput?.value.trim() || !workflowSelect?.value || !hasModels,
+        ai: AgentMode.getMode() === 'agent' ? !AgentMode.getToken() : (!apiKeyInput?.value.trim() || !endpointInput?.value.trim() || !workflowSelect?.value || !hasModels),
         automation: !!batchEnabled && batchTarget <= 0,
         data: false,
         about: false,
