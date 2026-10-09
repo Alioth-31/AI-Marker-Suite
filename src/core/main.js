@@ -37,10 +37,10 @@ async function startAutoGrading() {
 
     try {
         // 使用新的配置获取方式（优先工作流，回退直接配置）
-        const config = PresetManager.getActiveCallConfig();
+        const config = AgentMode.getCallConfig(PresetManager.getActiveCallConfig());
         if (!config.apiKey) {
             openSettingsPanel();
-            showToast('请先配置 AI 密钥');
+            showToast(AgentMode.getMode() === 'agent' ? '请先在 AI 设置中填写本地 Agent Bridge 配对令牌' : '请先配置 AI 密钥');
             window.aiGradingState.isRunning = false;
             return;
         }
@@ -66,7 +66,7 @@ async function startAutoGrading() {
         // 获取工作流信息（用于双评判断）
         const workflowId = presetConfig.workflowId;
         const workflow = workflowId ? WorkflowManager.getWorkflow(workflowId) : null;
-        const isDualEval = workflow && workflow.dualEval && workflow.dualEval.enabled;
+        const isDualEval = AgentMode.getMode() === 'api' && workflow && workflow.dualEval && workflow.dualEval.enabled;
 
         if (isDualEval) {
             console.log(`🔄 [诊断] 使用双评模式 — 工作流: ${workflow.name}`);
