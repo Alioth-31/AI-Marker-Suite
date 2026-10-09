@@ -737,9 +737,16 @@ ${scoreComparison}
 **重要规则：**
 - 如果你分析出了差异原因（如OCR识别不准、评分标准不完善等），你**必须**将改进措施写入对应的字段（参考答案或评分标准），而不是写"不变"
 - "不变"仅用于你确认该部分完全正确、无需任何修改的情况
-- 如果问题出在评分标准不够细致，就把更细致的标准写入"新评分标准"
-- 如果问题出在参考答案不够准确，就把修正后的答案写入"新参考答案"
+- 如果问题出在评分标准不够细致，就在原有标准基础上**追加**更细致的条目
+- 如果问题出在参考答案不够准确，就修正对应条目
 - 不要在"不变"后面附加注释或建议，修改内容直接写入对应字段
+
+**细节保留要求（极其重要）：**
+- 输出"新参考答案"/"新评分标准"时，必须**完整保留原文的所有条目、数值、步骤和细节**
+- 只允许：(a) 修正出问题的条目 (b) 追加新条目 (c) 细化表述不清的条目
+- **禁止**概括、压缩、省略、合并原文的任何条目，即使某个条目你认为与本次差异无关
+- 新版本的条目数量只能 ≥ 原文条目数量
+- 如果原文含序号、分点、表格、公式，保持原有结构不变
 
 请返回修改后的提示词各部分，严格按以下格式（字段名不要加粗、不要加 markdown 标记，每行一个字段，"不变"后面不能有其他内容）：
 修改理由：[分析差异的原因和改进方向]
@@ -749,5 +756,7 @@ ${scoreComparison}
 
     // 使用 callConfig（含 endpoint/apiKey/model）调用 API，config 仅用于构建提示词
     const apiConfig = context.callConfig || context.config;
-    return callAI(analysisPrompt, context.base64DataArray, apiConfig, onStreamUpdate);
+    // 补传题目/答案/评分标准中的内嵌图片（否则图片版标准对优化 AI 不可见）
+    const fieldImages = typeof collectFieldImages === 'function' ? collectFieldImages(context.config) : [];
+    return callAI(analysisPrompt, context.base64DataArray, apiConfig, onStreamUpdate, fieldImages);
 }

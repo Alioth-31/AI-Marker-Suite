@@ -92,7 +92,7 @@ const ScoreCalculator = {
         const roundedBonus = this.round(diligenceResult.bonus, scoringConfig);
 
         // 3. 最终总分 = min(取整(准确性 + 勤勉), 满分)
-        const finalScore = Math.min(this.round(accuracyScore + roundedBonus, scoringConfig), maxScore);
+        let finalScore = Math.min(this.round(accuracyScore + roundedBonus, scoringConfig), maxScore);
 
         if (roundedBonus > 0) {
             console.log(`🌟 [分数计算] 勤勉等级${diligenceLevel}/5, 衰减${diligenceResult.decayFactor.toFixed(2)}, 加分+${roundedBonus}, 最终${finalScore}`);
@@ -114,10 +114,17 @@ const ScoreCalculator = {
                 ? this.distributeBonus(rounded, roundedBonus, s => this.round(s, scoringConfig))
                 : rounded;
 
-            // 校验：各单元之和应等于总分
+            // 校验：各单元之和应等于总分；不一致时以小题之和为准（小题是明细、最终按小题填入平台）
             const unitSum = finalUnitScores.reduce((s, u) => s + (u.score || 0), 0);
             if (Math.abs(unitSum - finalScore) > 0.01) {
-                console.warn(`⚠️ [分数计算] 各单元之和(${unitSum})与总分(${finalScore})不一致`);
+                // 仅当所有单元均有分数时才覆盖，避免部分单元缺分时误改总分
+                const allScored = finalUnitScores.every(u => u.score !== null && u.score !== undefined);
+                if (allScored) {
+                    console.warn(`⚠️ [分数计算] 各单元之和(${unitSum})与总分(${finalScore})不一致，以小题之和为准`);
+                    finalScore = Math.min(unitSum, maxScore);
+                } else {
+                    console.warn(`⚠️ [分数计算] 各单元之和(${unitSum})与总分(${finalScore})不一致（部分单元缺分，保留原总分）`);
+                }
             }
         }
 

@@ -622,6 +622,51 @@ async function callAIWithRetry(prompt, base64DataArray, config, onStreamUpdate, 
 }
 
 // ========== 双评引擎 ==========
+// 双评小题分数合并（逐题取平均；评语有差异时并列两份）
+function mergeDualSubScores(detailA, detailB) {
+    if (!detailA?.subScores || !detailB?.subScores ||
+        detailA.subScores.length !== detailB.subScores.length) {
+        return detailA?.subScores || null;
+    }
+    return detailA.subScores.map((sqA, i) => {
+        const sqB = detailB.subScores[i];
+        const avgScore = (sqA.score !== null && sqA.score !== undefined && sqB.score !== null && sqB.score !== undefined)
+            ? Math.round((sqA.score + sqB.score) / 2)
+            : (sqA.score ?? sqB.score);
+        // 按评语内容决定是否并列（与给分是否相同无关）：措辞不同就都展示
+        const cA = (sqA.comment || '').trim();
+        const cB = (sqB.comment || '').trim();
+        let comment = cA || cB;
+        if (cA && cB && cA !== cB) {
+            comment = `A: ${cA}；B: ${cB}`;
+        }
+        return { ...sqA, score: avgScore, comment };
+    });
+}
+
+// 双评详情重建：分数计算/评分依据必须与合并后的分数一致，不能沿用单模型原文
+function buildDualEvalDetail(detailA, detailB, finalSubScores, finalScore) {
+    const sections = { ...(detailA?._sections || {}) };
+    if (finalSubScores && finalSubScores.length > 0) {
+        const parts = finalSubScores.map(s =>
+            `${s.label}得分${(s.score !== null && s.score !== undefined) ? s.score + '分' : '—'}`);
+        sections['分数计算'] = `${parts.join(' + ')} = 总得分${finalScore}分`;
+    } else {
+        sections['分数计算'] = `双评平均 = 总得分${finalScore}分`;
+    }
+    const basisA = detailA?._sections?.['评分依据'] || '';
+    const basisB = detailB?._sections?.['评分依据'] || '';
+    sections['评分依据'] = (basisA && basisB)
+        ? `【模型A】\n${basisA}\n\n【模型B】\n${basisB}`
+        : (basisA || basisB || '');
+    return {
+        sections,
+        scoringBasis: sections['评分依据'],
+        calculation: sections['分数计算'],
+        comment: sections['评分依据']
+    };
+}
+
 async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
     const workflow = WorkflowManager.getWorkflow(config.workflowId);
     if (!workflow || !workflow.dualEval || !workflow.dualEval.enabled) {
@@ -675,25 +720,26 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
 
     // 分差在阈值内
     if (diff <= threshold) {
-        const finalScore = Math.round((scoreA + scoreB) / 2);
+        let finalScore = Math.round((scoreA + scoreB) / 2);
         console.log(`✅ [双评] 分差在阈值内，取平均分: ${finalScore}`);
 
         // 处理分小题分数：对每个小题分别取平均
-        let finalSubScores = detailA?.subScores || null;
-        if (detailA?.subScores && detailB?.subScores &&
+        const finalSubScores = mergeDualSubScores(detailA, detailB);
+        if (finalSubScores && detailA?.subScores && detailB?.subScores &&
             detailA.subScores.length === detailB.subScores.length) {
-            finalSubScores = detailA.subScores.map((sqA, i) => {
-                const sqB = detailB.subScores[i];
-                const avgScore = (sqA.score !== null && sqB.score !== null)
-                    ? Math.round((sqA.score + sqB.score) / 2)
-                    : (sqA.score ?? sqB.score);
-                return {
-                    ...sqA,
-                    score: avgScore
-                };
-            });
             console.log(`✅ [双评] 分小题平均: ${finalSubScores.map(s => s.label + '=' + s.score).join(', ')}`);
+
+            // 总分与小题之和一致性校准（各自取整会导致偏差，以小题之和为准）
+            const subSum = finalSubScores.reduce((s, u) => s + (u.score || 0), 0);
+            const allScored = finalSubScores.every(u => u.score !== null && u.score !== undefined);
+            if (allScored && Math.abs(subSum - finalScore) > 0.01) {
+                console.warn(`⚠️ [双评] 小题之和(${subSum})与平均总分(${finalScore})不一致，以小题之和为准`);
+                finalScore = subSum;
+            }
         }
+
+        // 详情重建：分数计算/评分依据跟随合并后的分数（不能沿用模型A原文）
+        const detail = buildDualEvalDetail(detailA, detailB, finalSubScores, finalScore);
 
         // 勤勉度也取平均
         const avgDiligenceLevel = Math.round(((detailA?.diligenceLevel || 0) + (detailB?.diligenceLevel || 0)) / 2);
@@ -705,6 +751,10 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
             score: finalScore,
             rawScore: finalScore,
             subScores: finalSubScores,
+            comment: detail.comment,
+            scoringBasis: detail.scoringBasis,
+            calculation: detail.calculation,
+            _sections: detail.sections,
             diligenceLevel: avgDiligenceLevel,
             diligenceReason: avgDiligenceReason,
             dualEval: {
@@ -730,11 +780,18 @@ async function callDualEvaluation(base64DataArray, config, onStreamUpdate) {
     if (!arbConfig) {
         console.warn('⚠️ [三评] 仲裁模型配置不完整，取平均分');
         const finalScore = Math.round((scoreA + scoreB) / 2);
+        const finalSubScores = mergeDualSubScores(detailA, detailB);
+        const detail = buildDualEvalDetail(detailA, detailB, finalSubScores, finalScore);
         const avgLevel = Math.round(((detailA?.diligenceLevel || 0) + (detailB?.diligenceLevel || 0)) / 2);
         return {
             ...detailA,
             score: finalScore,
             rawScore: finalScore,
+            subScores: finalSubScores,
+            comment: detail.comment,
+            scoringBasis: detail.scoringBasis,
+            calculation: detail.calculation,
+            _sections: detail.sections,
             diligenceLevel: avgLevel,
             diligenceReason: detailA?.diligenceReason || '',
             dualEval: { scoreA, scoreB, diff, result: 'average-fallback', detailA: detailA?._sections || null, detailB: detailB?._sections || null }

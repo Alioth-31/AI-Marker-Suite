@@ -219,15 +219,23 @@ function parseStructuredResponse(text, maxScore) {
 
 function extractScore(text, maxScore) {
     if (!text) return null;
-    const match = text.match(/(\d+\.?\d*)/);
-    if (match) {
-        let num = parseFloat(match[1]);
-        if (num < 0) num = 0;
-        const upperLimit = (maxScore && maxScore > 0) ? maxScore : 999;
-        if (num > upperLimit) num = upperLimit;
-        return num;
+    // 优先取等号后的结果（如 "2+2=4" → 4），避免误取算式中的第一个数
+    let num = null;
+    const eqMatches = text.match(/=\s*(\d+\.?\d*)/g);
+    if (eqMatches && eqMatches.length > 0) {
+        const last = eqMatches[eqMatches.length - 1].match(/(\d+\.?\d*)/);
+        if (last) num = parseFloat(last[1]);
     }
-    return null;
+    // 回退：取第一个数字（"得分：4分" 这类纯数字场景）
+    if (num === null || isNaN(num)) {
+        const match = text.match(/(\d+\.?\d*)/);
+        if (!match) return null;
+        num = parseFloat(match[1]);
+    }
+    if (num < 0) num = 0;
+    const upperLimit = (maxScore && maxScore > 0) ? maxScore : 999;
+    if (num > upperLimit) num = upperLimit;
+    return num;
 }
 
 // ---------- 旧格式解析器（兼容） ----------
@@ -374,12 +382,17 @@ function parsePromptModification(text) {
 // ========== 分小题提示词组装 ==========
 function buildSubQuestionPrompt(config) {
     var questionText = extractFieldText(config.question);
+    var answerText = extractFieldText(config.answer);
+    var rubricText = extractFieldText(config.rubric);
     var imgAnnotation = buildImageAnnotation(config);
 
     let prompt = `你是一位严格的阅卷老师。请查看图片中的学生答案并评分。
 
 ===== 输入信息 =====`;
     if (questionText) prompt += `\n【题目】${imgAnnotation}\n${questionText}`;
+    // 顶层参考答案/评分标准（多小题共用；评分单元本身不携带答案/标准字段）
+    if (answerText) prompt += `\n【参考答案】\n${answerText}`;
+    if (rubricText) prompt += `\n【评分标准】\n${rubricText}`;
 
     prompt += `\n【各小题评分要求】\n`;
     for (const sq of config.subQuestions) {
