@@ -316,7 +316,8 @@ function showCorrectionPanel(context) {
     // 返回 feedback 对象，校验不通过时显示提示并返回 null
     function collectFeedback(body) {
         const reasonVal = editedReasonData || '';
-        if (hasSubScores) {
+        const hasSub = context.subScores && context.subScores.length > 0;
+        if (hasSub) {
             const subInputs = body.querySelectorAll('.cor-sub-score-input');
             const subScoreCorrections = [];
             let hasAnyInput = false;
